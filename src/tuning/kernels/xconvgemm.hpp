@@ -112,7 +112,7 @@ TunerSettings XConvGemmGetTunerSettings(const int, const Arguments<T> &args) {
 
   // Describes how to compute the performance metrics
   settings.metric_amount = args.batch_count * 2 * num_patches * args.num_kernels * patch_size;
-  settings.performance_unit = "GFLOPS";
+  settings.performance_unit = "GFLOP";
 
   return settings;
 }

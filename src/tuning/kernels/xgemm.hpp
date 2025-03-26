@@ -166,7 +166,7 @@ TunerSettings XgemmGetTunerSettings(const int V, const Arguments<T> &args) {
     // scalar flops
     settings.metric_amount = args.m * args.n * (2 * args.k - 1);
   }
-  settings.performance_unit = "GFLOPS";
+  settings.performance_unit = "GFLOP";
 
   return settings;
 }

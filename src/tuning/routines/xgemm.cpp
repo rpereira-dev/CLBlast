@@ -109,8 +109,9 @@ void TuneGemmSingleSize(const Platform& platform, const Device& device, const Co
     ForceSelectIndirectFrom<T>(limit, device, "GemmRoutine", "XGEMM_MIN_INDIRECT_SIZE");
     auto time_ms = -1.0;
     try {
-      time_ms = TimeFunction(num_runs, FunctionToTune);
-      printf("  --> %9.2lf ms\n", time_ms);
+      double time_min_ms, total_time_ms, total_J;
+      int err = TimeFunction(num_runs, FunctionToTune, time_min_ms, total_time_ms, total_J);
+      printf("  --> %9.2lf ms\n", time_min_ms);
     }
     catch (...) {
       const auto status_code = DispatchExceptionCatchAll(true);

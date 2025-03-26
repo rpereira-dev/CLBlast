@@ -22,6 +22,10 @@
 #include "utilities/utilities.hpp"
 #include "tuning/tuning.hpp"
 
+#if CUDA_ENERGY
+# include <nvml.h>
+#endif
+
 namespace clblast {
 // =================================================================================================
 
@@ -82,7 +86,7 @@ void PrintTimingsToFileAsJSON(const std::string &filename,
 void print_separator(const size_t parameters_size) {
   printf("x------x-------x");
   for (auto i = size_t{0}; i < parameters_size; ++i) { printf("-----"); }
-  printf("-x-----------------x-----------------x----------------x--------------x--------x-------------------x\n");
+  printf("-x-----------------x-----------------x----------------x--------------x------------x----------x----------------x-------------------x\n");
 }
 
 // =================================================================================================
@@ -147,6 +151,43 @@ void Tuner(int argc, char* argv[], const int V,
   const auto context = Context(device);
   auto queue = Queue(context, device);
 
+  # if CUDA_ENERGY
+  // Initialize Cuda energy counters
+
+  nvmlReturn_t result;
+  nvmlDevice_t nvdevice;
+  unsigned long long energy;
+
+  // Initialize NVML
+  result = nvmlInit();
+  if (NVML_SUCCESS != result) {
+      printf("Failed to initialize NVML: %s\n", nvmlErrorString(result));
+      exit(1);
+  }
+
+  // Get the handle for the first device
+  result = nvmlDeviceGetHandleByIndex(0, &nvdevice);
+  if (NVML_SUCCESS != result) {
+      printf("Failed to get handle for device 0: %s\n", nvmlErrorString(result));
+      nvmlShutdown();
+      exit(1);
+  }
+
+  // Description
+    // Retrieves total energy consumption for this GPU in millijoules (mJ) since the driver was last reloaded
+    // For Volta or newer fully supported devices.
+  result = nvmlDeviceGetTotalEnergyConsumption(nvdevice, &energy);
+  if (NVML_SUCCESS != result) {
+      printf("Failed to get total energy consumption: %s\n", nvmlErrorString(result));
+      nvmlShutdown();
+      exit(1);
+  }
+
+  printf("Initialized nvml (CUDA_ENERGY=1) - initial energy is `%llu`\n", energy);
+  #else
+  printf("Disabled nvml (CUDA_ENERGY=0)\n");
+  #endif
+
   // Tests for validity of the precision and retrieves properties
   if (!PrecisionSupported<T>(device)) {
     printf("* Unsupported precision, skipping this tuning run\n\n");
@@ -204,7 +245,7 @@ void Tuner(int argc, char* argv[], const int V,
   printf("\n");
   printf("|   ID | total |");
   for (auto i = size_t{0}; i < settings.parameters.size() - 1; ++i) { printf("     "); }
-  printf("param |      local      |      global     |       compiles |         time | %6s |            status |\n", settings.performance_unit.c_str());
+  printf("param |      local      |      global     |       compiles |         time |          J | %6s/s | %9s/watt |            status |\n", settings.performance_unit.c_str(), settings.performance_unit.c_str());
   print_separator(settings.parameters.size());
 
   // First runs a reference example to compare against
@@ -243,10 +284,13 @@ void Tuner(int argc, char* argv[], const int V,
     printf("             %sOK%s |", kPrintSuccess.c_str(), kPrintEnd.c_str());
 
     // Runs the kernel
-    const auto time_ms = TimeKernel(args.num_runs, kernel, queue, device,
-                                    global, local);
-    printf("      - |");
-    if (time_ms == -1.0) { throw std::runtime_error("Error in reference implementation"); }
+    double time_min_ms, total_time_ms, total_J;
+    double n = (double) args.num_runs;
+    bool silent = true;
+    int err = TimeKernel(args.num_runs, kernel, queue, device, global, local, silent, time_min_ms, total_time_ms, total_J);
+    if (err) { throw std::runtime_error("Error in reference implementation"); }
+    printf(" %9.2lf ms |", total_time_ms / n);
+    printf("          - |        - |              - |");
 
     // Saves the result
     for (const auto id : settings.outputs) {
@@ -295,6 +339,7 @@ void Tuner(int argc, char* argv[], const int V,
         printf("%8zu%8d |%8zu%8d |", local[0], 1, global[0], 1);
       }
 
+
       // Sets the parameters for this configuration
       auto kernel_source = std::string{""};
       for (const auto &parameter : configuration) {
@@ -314,10 +359,14 @@ void Tuner(int argc, char* argv[], const int V,
 
       // Runs the kernel
       SetArguments(V, kernel, args, device_buffers);
-      const auto time_ms = TimeKernel(args.num_runs, kernel, queue, device, global, local);
+      double time_min_ms;
+      double total_time_ms;
+      double total_J;
+      bool silent = true;
+      int err = TimeKernel(args.num_runs, kernel, queue, device, global, local, silent, time_min_ms, total_time_ms, total_J);
 
       // Kernel run was not successful
-      if (time_ms == -1.0) {
+      if (err) {
         printf("      - |");
         printf("   %sinvalid config.%s |", kPrintError.c_str(), kPrintEnd.c_str());
         printf(" <-- skipping\n");
@@ -340,11 +389,23 @@ void Tuner(int argc, char* argv[], const int V,
         }
       }
 
+      // Report metrics
+      double            n = (double) args.num_runs;
+      double           ms = total_time_ms / n;
+      double            s = ms / (double)1e3;
+      double metric_per_s = settings.metric_amount / s / (double)1e9;
+
+      double            J    = total_J / n;
+      double            P    = J / s;
+      double metric_per_watt = metric_per_s / P;
+      // printf(" %9.2lf ms |", time_min_ms);
+      printf(" %9.2lf ms |", ms);
+      printf(" %8.4lf | %8.1lf | %14.3lf |", J, metric_per_s, metric_per_watt);
+      printf("     %sresults match%s |\n", kPrintSuccess.c_str(), kPrintEnd.c_str());
+
       // All was OK
       configuration["PRECISION"] = static_cast<size_t>(args.precision);
-      results.push_back(TuningResult{settings.kernel_name, time_ms, configuration});
-      printf(" %6.1lf |", settings.metric_amount / (time_ms * 1.0e6));
-      printf("     %sresults match%s |\n", kPrintSuccess.c_str(), kPrintEnd.c_str());
+      results.push_back(TuningResult{settings.kernel_name, ms, configuration});
     }
     catch (CLCudaAPIBuildError&) {
       const auto status_code = DispatchExceptionCatchAll(true);

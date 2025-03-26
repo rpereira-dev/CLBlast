@@ -292,9 +292,11 @@ StatusCode TunerAPI(Queue &queue, const Arguments<T> &args, const int V,
     SetArguments(V, kernel, args, device_buffers);
 
     // Runs the kernel
-    const auto time_ms = TimeKernel(args.num_runs, kernel, queue, device,
-                                    settings.global_size_ref, settings.local_size_ref, true);
-    if (time_ms == -1.0) { throw std::runtime_error("Error in reference implementation"); }
+    double time_ms, x, y;
+    int err = TimeKernel(args.num_runs, kernel, queue, device,
+                         settings.global_size_ref, settings.local_size_ref, true,
+                         time_ms, x, y);
+    if (err) { throw std::runtime_error("Error in reference implementation"); }
 
     // Saves the result
     for (const auto id : settings.outputs) {
@@ -338,10 +340,11 @@ StatusCode TunerAPI(Queue &queue, const Arguments<T> &args, const int V,
 
       // Runs the kernel
       SetArguments(V, kernel, args, device_buffers);
-      const auto time_ms = TimeKernel(args.num_runs, kernel, queue, device, global, local, true);
+      double time_ms, x, y;
+      int err = TimeKernel(args.num_runs, kernel, queue, device, global, local, true, time_ms, x, y);
 
       // Kernel run was not successful
-      if (time_ms == -1.0) {
+      if (err) {
         continue;
       }
 

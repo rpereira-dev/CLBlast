@@ -102,7 +102,7 @@ TunerSettings XgemmDirectGetTunerSettings(const int V, const Arguments<T> &args)
 
   // Describes how to compute the performance metrics
   settings.metric_amount = 2 * args.m * args.n * args.k;
-  settings.performance_unit = "GFLOPS";
+  settings.performance_unit = "GFLOP";
 
   return settings;
 }

@@ -20,32 +20,97 @@
 #include <algorithm>
 #include <chrono>
 
+#if CUDA_ENERGY
+# include <nvml.h>
+#endif
+
 #include "utilities/utilities.hpp"
 
 namespace clblast {
 // =================================================================================================
 
+# include <time.h>
+
+static inline uint64_t
+get_nanotime(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)(ts.tv_sec * 1000000000) + (uint64_t) ts.tv_nsec;
+}
+
 template <typename F>
-double TimeFunction(const size_t num_runs, F const &function) {
-  function(); // warm-up
-  auto timings = std::vector<double>(num_runs);
-  for (auto &timing: timings) {
-    const auto start_time = std::chrono::steady_clock::now();
-    function();
-    const auto elapsed_time = std::chrono::steady_clock::now() - start_time;
-    timing = std::chrono::duration<double,std::milli>(elapsed_time).count();
+int TimeFunction(const size_t num_runs, F const &function,
+                    double & time_min_ms, double & total_time_ms, double & total_J
+) {
+
+  # if CUDA_ENERGY
+  // Get the handle for the first device
+  nvmlDevice_t nvdevice;
+  nvmlReturn_t result = nvmlDeviceGetHandleByIndex(0, &nvdevice);
+  if (NVML_SUCCESS != result) {
+      printf("Failed to get handle for device 0: %s\n", nvmlErrorString(result));
+      return 1;
   }
-  return *std::min_element(timings.begin(), timings.end());
+  # endif
+
+  // warm-up
+  for (int i = 0 ; i < 5 ; ++i)
+      function();
+
+  // init accumulators
+  time_min_ms   = std::numeric_limits<double>::infinity();
+  total_time_ms = 0.0;
+  total_J       = 0.0;
+
+  # if CUDA_ENERGY
+  unsigned long long int mj0;
+  result = nvmlDeviceGetTotalEnergyConsumption(nvdevice, &mj0);
+  if (NVML_SUCCESS != result) {
+      printf("Failed to get total energy consumption: %s\n", nvmlErrorString(result));
+      return 1;
+  }
+  # endif /* CUDA_ENERGY */
+
+  // run 'n' times,
+  const uint64_t t0 = get_nanotime();
+  for (size_t i = 0 ; i < num_runs ; ++i)
+  {
+      const uint64_t t0 = get_nanotime();
+      function();
+      const uint64_t tf = get_nanotime();
+      const uint64_t dt = (double) (tf - t0) / (double)1e9 * (double)1e3;
+      if (dt < time_min_ms)
+          time_min_ms = dt;
+  }
+  const uint64_t tf = get_nanotime();
+  total_time_ms = (double) (tf - t0) / (double)1e9 * (double)1e3;
+
+  # if CUDA_ENERGY
+  unsigned long long int mj1;
+  result = nvmlDeviceGetTotalEnergyConsumption(nvdevice, &mj1);
+  if (NVML_SUCCESS != result) {
+      printf("Failed to get total energy consumption: %s\n", nvmlErrorString(result));
+      return 1;
+  }
+
+  // Retrieves total energy consumption for this GPU in millijoules (mJ) since the driver was last reloaded
+  // For Volta or newer fully supported devices.
+  total_J = (mj1 - mj0) / (double)1e3;
+
+  # endif /* CUDA_ENERGY */
+  return 0;
 }
 
 // =================================================================================================
 
-double RunKernelTimed(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
-                      std::vector<size_t> global, const std::vector<size_t> &local);
+int RunKernelTimed(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
+                      std::vector<size_t> global, const std::vector<size_t> &local,
+                      double & time_min_ms, double & total_time_ms, double & total_J);
 
-double TimeKernel(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
+int TimeKernel(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
                   std::vector<size_t> global, const std::vector<size_t> &local,
-                  const bool silent = false);
+                  const bool silent, double & time_min_ms, double & total_time_ms, double & total_J);
 
 // =================================================================================================
 
@@ -62,9 +127,12 @@ std::vector<Timing> TimeRoutine(const size_t from, const size_t to, const size_t
     printf("| %6zu |", value);
     try {
       const auto FunctionToTune = [&]() { routine(value, queue, buffers); };
-      const auto time_ms = TimeFunction(num_runs, FunctionToTune);
-      printf(" %9.2lf ms |\n", time_ms);
-      timings.push_back({value, time_ms});
+      double time_min_ms;
+      double total_time_ms;
+      double total_J;
+      int err = TimeFunction(num_runs, FunctionToTune, time_min_ms, total_time_ms, total_J);
+      printf(" %9.2lf ms |\n", time_min_ms);
+      timings.push_back({value, time_min_ms});
     }
     catch (...) {
       const auto status_code = DispatchExceptionCatchAll(true);

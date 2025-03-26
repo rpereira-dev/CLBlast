@@ -19,8 +19,9 @@
 namespace clblast {
 // =================================================================================================
 
-double RunKernelTimed(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
-                      std::vector<size_t> global, const std::vector<size_t> &local) {
+int RunKernelTimed(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
+                      std::vector<size_t> global, const std::vector<size_t> &local,
+                      double & time_min_ms, double & total_time_ms, double & total_J) {
   auto event = Event();
 
   if (!local.empty()) {
@@ -58,21 +59,21 @@ double RunKernelTimed(const size_t num_runs, Kernel &kernel, Queue &queue, const
       event.WaitForCompletion();
       queue.Finish();
   };
-  return TimeFunction(num_runs, run_kernel_func);
+  return TimeFunction(num_runs, run_kernel_func, time_min_ms, total_time_ms, total_J);
 }
 
-double TimeKernel(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
+int TimeKernel(const size_t num_runs, Kernel &kernel, Queue &queue, const Device &device,
                   std::vector<size_t> global, const std::vector<size_t> &local,
-                  const bool silent) {
+                  const bool silent, double & time_min_ms, double & total_time_ms, double & total_J) {
   try {
-    const auto time_ms = RunKernelTimed(num_runs, kernel, queue, device, global, local);
-    if (!silent) { printf(" %9.2lf ms |", time_ms); }
-    return time_ms;
+    int err = RunKernelTimed(num_runs, kernel, queue, device, global, local, time_min_ms, total_time_ms, total_J);
+    if (!silent) { printf(" %9.2lf ms |", time_min_ms); }
+    return err;
   }
   catch (...) {
     const auto status_code = DispatchExceptionCatchAll(true);
     if (!silent) { printf("  error %-5d |", static_cast<int>(status_code)); }
-    return -1.0; // invalid
+    return 1; // err
   }
 }
 
