@@ -400,7 +400,7 @@ void Tuner(int argc, char* argv[], const int V,
       double metric_per_watt = metric_per_s / P;
       // printf(" %9.2lf ms |", time_min_ms);
       printf(" %9.2lf ms |", ms);
-      printf(" %8.4lf | %8.1lf | %14.3lf |", J, metric_per_s, metric_per_watt);
+      printf(" %10.2lf | %8.1lf | %14.1lf |", J, metric_per_s, metric_per_watt);
       printf("     %sresults match%s |\n", kPrintSuccess.c_str(), kPrintEnd.c_str());
 
       // All was OK

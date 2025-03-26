@@ -1,0 +1,45 @@
+Romain:
+i am using an auto-tuner for BLAS kernels, from CLBlast
+
+* Parameters explored: GEMMK MWG NWG KWG MDIMC NDIMC MDIMA NDIMB KWI VWM VWN STRM STRN SA SB KREG 
+
+What is the meaning of these parameters ?
+
+--------------------------------
+
+Le Chat:
+The parameters you're referring to are specific to the tuning of BLAS (Basic Linear Algebra Subprograms) kernels, particularly for the GEMM (General Matrix Multiplication) operation, using the CLBlast library. CLBlast is a library that provides optimized BLAS routines for OpenCL devices. Here's a brief explanation of each parameter:
+
+GEMMK: This likely refers to the inner dimension of the matrix multiplication, often denoted as 
+K
+K in the context of GEMM. It's the dimension that is summed over in the matrix multiplication 
+C
+=
+α
+⋅
+A
+⋅
+B
++
+β
+⋅
+C
+C=α⋅A⋅B+β⋅C.
+
+MWG, NWG, KWG: These are likely the work-group sizes for the three dimensions (M, N, K) of the GEMM operation. Work-groups are a way to divide the computation into smaller chunks that can be processed in parallel.
+
+MDIMC, NDIMC, MDIMA, NDIMB: These parameters are related to the dimensions of the sub-matrices (tiles) that the matrices A and B are divided into. They control the size of the blocks that are processed in parallel.
+
+KWI: This could refer to the inner unrolling factor for the K dimension. Unrolling is a loop optimization technique that can improve performance by reducing loop overhead.
+
+VWM, VWN: These likely refer to vector widths for the M and N dimensions. They specify how many elements are processed together in a vectorized operation.
+
+STRM, STRN: These could be the strides for the M and N dimensions. Strides define how much to increment the pointer when moving to the next element in a particular dimension.
+
+SA, SB: These likely refer to the leading dimensions (or strides) of matrices A and B. They specify the number of elements between the beginning of one row and the next row in the matrix.
+
+KREG: This could refer to the number of registers used for the K dimension. Registers are a limited resource in GPUs, and managing their use is crucial for performance.
+
+These parameters are used to fine-tune the performance of the GEMM operation on a specific hardware platform by controlling various aspects of parallelism, memory access patterns, and resource usage. The optimal values for these parameters can vary greatly depending on the hardware and the specific problem size.
+
+--------------------------------
