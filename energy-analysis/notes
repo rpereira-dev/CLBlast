@@ -1,0 +1,13 @@
+bon les resultats sont arrivés plus vite que prévu, la figure est assez illisible, j'explicit :
+GEMM CLBlast float32 sur 1x V100, m=n=k=4096
+bleu/vert/rogue = power cap à 100W/200W/300W
+1 point = average sur 100 run avec GFLOP/watt pour un tuning donnée (ID) - il y a 560 tuning differents
+observation
+on a en moyenne vert > bleu > rouge <=> 200W > 100W > 300W en terme d'efficacité energétique
+pour 200W et 300W - c'est le meme kernel (ID=534) - pour 100W - on a un autre kernel
+remarque
+en ID=534 à 300W, on est à 11.6 TFLOPS (les V100 sont vendus pour 14 TFLOPS - https://images.nvidia.com/content/technologies/volta/pdf/tesla-volta-v100-datasheet-letter-fnl-web.pdf) -> donc c'est OK niveau perf (c'est pas du Cuda ni du Cuda driver : kernel OpenCL launch via l'API OpenCL avec back-end Cuda)
+les parametres explorés sont décrits ici https://github.com/rpereira-dev/CLBlast/blob/energy-tuning/src/kernels/level3/xgemm_part1.opencl
+repo CLBlast patchée - https://github.com/rpereira-dev/CLBlast/tree/energy-tuning/energy-analysis
+Conclusion
+TBD
